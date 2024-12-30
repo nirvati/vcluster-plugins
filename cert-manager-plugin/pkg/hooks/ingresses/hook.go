@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/constants"
 	"github.com/loft-sh/vcluster/pkg/util/translate"
+	"github.com/nirvati/vcluster-cert-manager-plugin/pkg/constants"
 	"github.com/nirvati/vcluster-sdk/plugin"
 	networkingv1 "k8s.io/api/networking/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"

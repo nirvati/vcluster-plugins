@@ -1,4 +1,4 @@
-module github.com/loft-sh/vcluster-cert-manager-plugin
+module github.com/nirvati/vcluster-cert-manager-plugin
 
 go 1.23.2
 

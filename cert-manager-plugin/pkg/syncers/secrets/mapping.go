@@ -6,11 +6,11 @@ import (
 	"strings"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
-	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/constants"
-	syncertypes "github.com/loft-sh/vcluster/pkg/syncer/types"
 	context "github.com/loft-sh/vcluster/pkg/syncer/synccontext"
+	syncertypes "github.com/loft-sh/vcluster/pkg/syncer/types"
 	"github.com/loft-sh/vcluster/pkg/util/clienthelper"
 	"github.com/loft-sh/vcluster/pkg/util/translate"
+	"github.com/nirvati/vcluster-cert-manager-plugin/pkg/constants"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"

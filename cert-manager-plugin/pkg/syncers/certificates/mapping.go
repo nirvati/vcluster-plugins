@@ -5,13 +5,13 @@ import (
 	"strings"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
-	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/constants"
 	"github.com/loft-sh/vcluster/pkg/mappings/generic"
 	"github.com/loft-sh/vcluster/pkg/syncer/synccontext"
 	context "github.com/loft-sh/vcluster/pkg/syncer/synccontext"
 	syncertypes "github.com/loft-sh/vcluster/pkg/syncer/types"
 	"github.com/loft-sh/vcluster/pkg/util/clienthelper"
 	"github.com/loft-sh/vcluster/pkg/util/translate"
+	"github.com/nirvati/vcluster-cert-manager-plugin/pkg/constants"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -26,7 +26,7 @@ var (
 
 type certificateMapper struct {
 	synccontext.Mapper
-	
+
 	virtualClient client.Client
 }
 
@@ -44,7 +44,7 @@ func CreateCertificateMapper(ctx *synccontext.RegisterContext) (synccontext.Mapp
 	}
 
 	return generic.WithRecorder(&certificateMapper{
-		Mapper: mapper,
+		Mapper:        mapper,
 		virtualClient: ctx.VirtualManager.GetClient(),
 	}), nil
 }

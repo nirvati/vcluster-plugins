@@ -2,11 +2,11 @@ package main
 
 import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
-	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/hooks/ingresses"
-	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/syncers/certificates"
-	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/syncers/issuers"
-	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/syncers/secrets"
 	"github.com/loft-sh/vcluster/pkg/scheme"
+	"github.com/nirvati/vcluster-cert-manager-plugin/pkg/hooks/ingresses"
+	"github.com/nirvati/vcluster-cert-manager-plugin/pkg/syncers/certificates"
+	"github.com/nirvati/vcluster-cert-manager-plugin/pkg/syncers/issuers"
+	"github.com/nirvati/vcluster-cert-manager-plugin/pkg/syncers/secrets"
 	"github.com/nirvati/vcluster-sdk/plugin"
 	"k8s.io/klog"
 )
