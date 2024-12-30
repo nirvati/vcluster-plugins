@@ -6,13 +6,14 @@ import (
 	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/syncers/certificates"
 	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/syncers/issuers"
 	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/syncers/secrets"
-	"github.com/loft-sh/vcluster-sdk/plugin"
+	"github.com/loft-sh/vcluster/pkg/scheme"
+	"github.com/nirvati/vcluster-sdk/plugin"
 	"k8s.io/klog"
 )
 
 func init() {
 	// Add cert manager types to our plugin scheme
-	_ = certmanagerv1.AddToScheme(plugin.Scheme)
+	_ = certmanagerv1.AddToScheme(scheme.Scheme)
 }
 
 func main() {
@@ -29,19 +30,28 @@ func main() {
 	}
 
 	// register certificate syncer
-	err = plugin.Register(certificates.New(registerCtx))
+	syncer, err := certificates.New(registerCtx)
+	if err != nil {
+		klog.Fatalf("Error creating certificate syncer: %v", err)
+	}
+	err = plugin.Register(syncer)
 	if err != nil {
 		klog.Fatalf("Error registering certificate syncer: %v", err)
 	}
 
 	// register issuer syncer
-	err = plugin.Register(issuers.New(registerCtx))
+	issuers_syncer, err := issuers.New(registerCtx)
+	err = plugin.Register(issuers_syncer)
 	if err != nil {
 		klog.Fatalf("Error registering certificate syncer: %v", err)
 	}
 
 	// register secrets syncer
-	err = plugin.Register(secrets.New(registerCtx))
+	secrets_syncer, err := secrets.New(registerCtx)
+	if err != nil {
+		klog.Fatalf("Error creating secrets syncer: %v", err)
+	}
+	err = plugin.Register(secrets_syncer)
 	if err != nil {
 		klog.Fatalf("Error registering secrets syncer: %v", err)
 	}

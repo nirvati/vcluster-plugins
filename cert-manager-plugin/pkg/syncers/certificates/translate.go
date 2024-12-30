@@ -1,68 +1,54 @@
 package certificates
 
 import (
-	"context"
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/constants"
-	"github.com/loft-sh/vcluster-sdk/clienthelper"
-	"github.com/loft-sh/vcluster-sdk/syncer/translator"
-	"github.com/loft-sh/vcluster-sdk/translate"
+	"github.com/loft-sh/vcluster/pkg/mappings"
+	"github.com/loft-sh/vcluster/pkg/syncer/synccontext"
+	"github.com/loft-sh/vcluster/pkg/util/translate"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (s *certificateSyncer) translate(vObj client.Object) *certmanagerv1.Certificate {
-	pObj := s.TranslateMetadata(vObj).(*certmanagerv1.Certificate)
+func (s *certificateSyncer) translate(ctx *synccontext.SyncContext, vObj client.Object) *certmanagerv1.Certificate {
+	pObj := translate.HostMetadata(vObj, s.VirtualToHost(ctx, types.NamespacedName{Name: vObj.GetName(), Namespace: vObj.GetNamespace()}, vObj)).(*certmanagerv1.Certificate)
 	vCertificate := vObj.(*certmanagerv1.Certificate)
-	pObj.Spec = *rewriteSpec(&vCertificate.Spec, vCertificate.Namespace)
+	rewriteSpec(ctx, &vCertificate.Spec, vCertificate.Namespace)
 	return pObj
 }
 
-func (s *certificateSyncer) translateUpdate(pObj, vObj *certmanagerv1.Certificate) *certmanagerv1.Certificate {
-	var updated *certmanagerv1.Certificate
+func (s *certificateSyncer) translateUpdate(ctx *synccontext.SyncContext, evt *synccontext.SyncEvent[*certmanagerv1.Certificate]) {
+	// sync metadata
+	evt.Host.Annotations = translate.HostAnnotations(evt.Virtual, evt.Host)
+	evt.Host.Labels = translate.HostLabels(evt.Virtual, evt.Host)
 
-	// check annotations & labels
-	changed, updatedAnnotations, updatedLabels := s.TranslateMetadataUpdate(vObj, pObj)
-	if changed {
-		updated = newIfNil(updated, pObj)
-		updated.Labels = updatedLabels
-		updated.Annotations = updatedAnnotations
-	}
+	// sync virtual to host
+	evt.Host.Spec = evt.Virtual.Spec
 
 	// update spec
-	pSpec := rewriteSpec(&vObj.Spec, vObj.GetNamespace())
-	if !equality.Semantic.DeepEqual(*pSpec, pObj.Spec) {
-		updated = newIfNil(updated, pObj)
-		updated.Spec = *pSpec
-	}
-
-	return updated
+	rewriteSpec(ctx, &evt.Virtual.Spec, evt.Virtual.GetNamespace())
 }
 
-func rewriteSpec(vObjSpec *certmanagerv1.CertificateSpec, namespace string) *certmanagerv1.CertificateSpec {
-	// translate secret names
-	vObjSpec = vObjSpec.DeepCopy()
+func rewriteSpec(ctx *synccontext.SyncContext, vObjSpec *certmanagerv1.CertificateSpec, namespace string) {
 	if vObjSpec.SecretName != "" {
-		vObjSpec.SecretName = translate.PhysicalName(vObjSpec.SecretName, namespace)
+		vObjSpec.SecretName = translate.Default.HostName(ctx, vObjSpec.SecretName, namespace).Name
 	}
 	if vObjSpec.IssuerRef.Kind == "Issuer" {
-		vObjSpec.IssuerRef.Name = translate.PhysicalName(vObjSpec.IssuerRef.Name, namespace)
+		vObjSpec.IssuerRef.Name = translate.Default.HostName(ctx, vObjSpec.IssuerRef.Name, namespace).Name
 	} else if vObjSpec.IssuerRef.Kind == "ClusterIssuer" {
 		// TODO: rewrite ClusterIssuers
 	}
 	if vObjSpec.Keystores != nil && vObjSpec.Keystores.JKS != nil {
-		vObjSpec.Keystores.JKS.PasswordSecretRef.Name = translate.PhysicalName(vObjSpec.Keystores.JKS.PasswordSecretRef.Name, namespace)
+		vObjSpec.Keystores.JKS.PasswordSecretRef.Name = translate.Default.HostName(ctx, vObjSpec.Keystores.JKS.PasswordSecretRef.Name, namespace).Name
 	}
 	if vObjSpec.Keystores != nil && vObjSpec.Keystores.PKCS12 != nil {
-		vObjSpec.Keystores.PKCS12.PasswordSecretRef.Name = translate.PhysicalName(vObjSpec.Keystores.PKCS12.PasswordSecretRef.Name, namespace)
+		vObjSpec.Keystores.PKCS12.PasswordSecretRef.Name = translate.Default.HostName(ctx, vObjSpec.Keystores.PKCS12.PasswordSecretRef.Name, namespace).Name
 	}
-
-	return vObjSpec
 }
 
-func (s *certificateSyncer) translateBackwards(pObj *certmanagerv1.Certificate, name types.NamespacedName) (*certmanagerv1.Certificate, error) {
+func (s *certificateSyncer) translateBackwards(ctx *synccontext.SyncContext, pObj *certmanagerv1.Certificate, name types.NamespacedName) (*certmanagerv1.Certificate, error) {
 	vCertificate := &certmanagerv1.Certificate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name.Name,
@@ -78,7 +64,7 @@ func (s *certificateSyncer) translateBackwards(pObj *certmanagerv1.Certificate, 
 	vCertificate.Annotations[constants.BackwardSyncAnnotation] = "true"
 
 	// rewrite spec
-	vCertificateSpec, err := s.rewriteSpecBackwards(&pObj.Spec, name)
+	vCertificateSpec, err := s.rewriteSpecBackwards(ctx, &pObj.Spec, name)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +73,7 @@ func (s *certificateSyncer) translateBackwards(pObj *certmanagerv1.Certificate, 
 	return vCertificate, nil
 }
 
-func (s *certificateSyncer) translateUpdateBackwards(pObj, vObj *certmanagerv1.Certificate) (*certmanagerv1.Certificate, error) {
+func (s *certificateSyncer) translateUpdateBackwards(ctx *synccontext.SyncContext, pObj, vObj *certmanagerv1.Certificate) (*certmanagerv1.Certificate, error) {
 	var updated *certmanagerv1.Certificate
 
 	// check annotations & labels
@@ -108,7 +94,7 @@ func (s *certificateSyncer) translateUpdateBackwards(pObj, vObj *certmanagerv1.C
 	}
 
 	// update spec
-	vSpec, err := s.rewriteSpecBackwards(&pObj.Spec, types.NamespacedName{Namespace: vObj.Namespace, Name: vObj.Name})
+	vSpec, err := s.rewriteSpecBackwards(ctx, &pObj.Spec, types.NamespacedName{Namespace: vObj.Namespace, Name: vObj.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -120,18 +106,14 @@ func (s *certificateSyncer) translateUpdateBackwards(pObj, vObj *certmanagerv1.C
 	return updated, nil
 }
 
-func (s *certificateSyncer) rewriteSpecBackwards(pObjSpec *certmanagerv1.CertificateSpec, vName types.NamespacedName) (*certmanagerv1.CertificateSpec, error) {
+func (s *certificateSyncer) rewriteSpecBackwards(ctx *synccontext.SyncContext, pObjSpec *certmanagerv1.CertificateSpec, vName types.NamespacedName) (*certmanagerv1.CertificateSpec, error) {
 	vObjSpec := pObjSpec.DeepCopy()
 
 	// find issuer
 	vObjSpec.SecretName = vName.Name
 	if vObjSpec.IssuerRef.Kind == "Issuer" {
-		// try to find issuer
-		issuer := &certmanagerv1.Issuer{}
-		err := clienthelper.GetByIndex(context.TODO(), s.virtualClient, issuer, translator.IndexByPhysicalName, vObjSpec.IssuerRef.Name)
-		if err == nil {
-			vObjSpec.IssuerRef.Name = issuer.Name
-		}
+		vIssuerName := mappings.HostToVirtual(ctx, vName.Name, vName.Namespace, nil, certmanagerv1.SchemeGroupVersion.WithKind("Issuer"))
+		vObjSpec.IssuerRef.Name = vIssuerName.Name
 	}
 
 	return vObjSpec, nil

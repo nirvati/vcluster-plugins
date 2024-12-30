@@ -3,12 +3,14 @@ package secrets
 import (
 	context2 "context"
 	"fmt"
+	"strings"
+
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"github.com/loft-sh/vcluster-cert-manager-plugin/pkg/constants"
-	"github.com/loft-sh/vcluster-sdk/clienthelper"
-	"github.com/loft-sh/vcluster-sdk/syncer"
-	"github.com/loft-sh/vcluster-sdk/syncer/context"
-	"github.com/loft-sh/vcluster-sdk/translate"
+	syncertypes "github.com/loft-sh/vcluster/pkg/syncer/types"
+	context "github.com/loft-sh/vcluster/pkg/syncer/synccontext"
+	"github.com/loft-sh/vcluster/pkg/util/clienthelper"
+	"github.com/loft-sh/vcluster/pkg/util/translate"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -17,8 +19,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
-	"strings"
 )
 
 var (
@@ -26,7 +26,7 @@ var (
 	IndexByIssuerSecret      = "indexbyissuersecret"
 )
 
-var _ syncer.IndicesRegisterer = &secretSyncer{}
+var _ syncertypes.IndicesRegisterer = &secretSyncer{}
 
 func (s *secretSyncer) RegisterIndices(ctx *context.RegisterContext) error {
 	err := ctx.VirtualManager.GetFieldIndexer().IndexField(ctx.Context, &certmanagerv1.Certificate{}, IndexByCertificateSecret, func(rawObj client.Object) []string {
@@ -35,21 +35,16 @@ func (s *secretSyncer) RegisterIndices(ctx *context.RegisterContext) error {
 	if err != nil {
 		return err
 	}
-	err = ctx.VirtualManager.GetFieldIndexer().IndexField(ctx.Context, &certmanagerv1.Issuer{}, IndexByIssuerSecret, func(rawObj client.Object) []string {
+	return ctx.VirtualManager.GetFieldIndexer().IndexField(ctx.Context, &certmanagerv1.Issuer{}, IndexByIssuerSecret, func(rawObj client.Object) []string {
 		return secretNamesFromIssuer(rawObj.(*certmanagerv1.Issuer))
 	})
-	if err != nil {
-		return err
-	}
-
-	return s.NamespacedTranslator.RegisterIndices(ctx)
 }
 
-var _ syncer.ControllerModifier = &secretSyncer{}
+var _ syncertypes.ControllerModifier = &secretSyncer{}
 
 func (s *secretSyncer) ModifyController(ctx *context.RegisterContext, builder *builder.Builder) (*builder.Builder, error) {
-	builder = builder.Watches(&source.Kind{Type: &certmanagerv1.Certificate{}}, handler.EnqueueRequestsFromMapFunc(mapCertificates))
-	builder = builder.Watches(&source.Kind{Type: &certmanagerv1.Issuer{}}, handler.EnqueueRequestsFromMapFunc(mapIssuers))
+	builder = builder.Watches(&certmanagerv1.Certificate{}, handler.EnqueueRequestsFromMapFunc(mapCertificates))
+	builder = builder.Watches(&certmanagerv1.Issuer{}, handler.EnqueueRequestsFromMapFunc(mapIssuers))
 	return builder, nil
 }
 
@@ -138,8 +133,8 @@ func (s *secretSyncer) nameByIssuer(pObj client.Object) types.NamespacedName {
 	return types.NamespacedName{}
 }
 
-func (s *secretSyncer) PhysicalToVirtual(pObj client.Object) types.NamespacedName {
-	namespacedName := s.NamespacedTranslator.PhysicalToVirtual(pObj)
+func (s *secretSyncer) HostToVirtual(ctx *context.SyncContext, req types.NamespacedName, pObj client.Object) types.NamespacedName {
+	namespacedName := s.GenericTranslator.HostToVirtual(ctx, req, pObj)
 	if namespacedName.Name != "" {
 		return namespacedName
 	}
@@ -156,10 +151,10 @@ func secretNamesFromCertificate(certificate *certmanagerv1.Certificate) []string
 	secrets := []string{}
 	// Do not include certificate.Spec.SecretName here as this will be handled separately by a different controller
 	if certificate.Spec.SecretName != "" {
-		secrets = append(secrets, translate.PhysicalName(certificate.Spec.SecretName, certificate.Namespace))
+		secrets = append(secrets, translate.Default.HostName(nil, certificate.Spec.SecretName, certificate.Namespace).Name)
 		secrets = append(secrets, certificate.Namespace+"/"+certificate.Spec.SecretName)
 	} else {
-		secrets = append(secrets, translate.PhysicalName(certificate.Name, certificate.Namespace))
+		secrets = append(secrets, translate.Default.HostName(nil, certificate.Name, certificate.Namespace).Name)
 		secrets = append(secrets, certificate.Namespace+"/"+certificate.Name)
 	}
 	if certificate.Spec.Keystores != nil && certificate.Spec.Keystores.JKS != nil && certificate.Spec.Keystores.JKS.PasswordSecretRef.Name != "" {
@@ -171,7 +166,7 @@ func secretNamesFromCertificate(certificate *certmanagerv1.Certificate) []string
 	return secrets
 }
 
-func mapCertificates(obj client.Object) []reconcile.Request {
+func mapCertificates(ctx context2.Context, obj client.Object) []reconcile.Request {
 	certificate, ok := obj.(*certmanagerv1.Certificate)
 	if !ok {
 		return nil
@@ -197,10 +192,10 @@ func mapCertificates(obj client.Object) []reconcile.Request {
 func secretNamesFromIssuer(issuer *certmanagerv1.Issuer) []string {
 	secrets := []string{}
 	if issuer.Spec.ACME != nil && issuer.Spec.ACME.PrivateKey.Name != "" {
-		secrets = append(secrets, translate.PhysicalName(issuer.Spec.ACME.PrivateKey.Name, issuer.Namespace))
+		secrets = append(secrets, translate.Default.HostName(nil, issuer.Spec.ACME.PrivateKey.Name, issuer.Namespace).Name)
 		secrets = append(secrets, issuer.Namespace+"/"+issuer.Spec.ACME.PrivateKey.Name)
 	} else if issuer.Spec.ACME != nil {
-		secrets = append(secrets, translate.PhysicalName(issuer.Name, issuer.Namespace))
+		secrets = append(secrets, translate.Default.HostName(nil, issuer.Name, issuer.Namespace).Name)
 		secrets = append(secrets, issuer.Namespace+"/"+issuer.Name)
 	}
 	if issuer.Spec.CA != nil && issuer.Spec.CA.SecretName != "" {
@@ -218,7 +213,7 @@ func secretNamesFromIssuer(issuer *certmanagerv1.Issuer) []string {
 	return secrets
 }
 
-func mapIssuers(obj client.Object) []reconcile.Request {
+func mapIssuers(ctx context2.Context, obj client.Object) []reconcile.Request {
 	issuer, ok := obj.(*certmanagerv1.Issuer)
 	if !ok {
 		return nil
