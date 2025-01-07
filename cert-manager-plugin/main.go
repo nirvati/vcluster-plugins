@@ -11,54 +11,32 @@ import (
 	"k8s.io/klog"
 )
 
-func init() {
-	// Add cert manager types to our plugin scheme
-	_ = certmanagerv1.AddToScheme(scheme.Scheme)
-}
-
 func main() {
+	_ = certmanagerv1.AddToScheme(scheme.Scheme)
+	
 	// init plugin
-	registerCtx, err := plugin.Init()
-	if err != nil {
-		klog.Fatalf("Error initializing plugin: %v", err)
-	}
+	registerCtx := plugin.MustInit()
 
 	// register ingress hook
-	err = plugin.Register(ingresses.NewIngressHook())
-	if err != nil {
-		klog.Fatalf("Error registering ingress hook: %v", err)
-	}
+	plugin.MustRegister(ingresses.NewIngressHook())
 
 	// register certificate syncer
 	syncer, err := certificates.New(registerCtx)
 	if err != nil {
 		klog.Fatalf("Error creating certificate syncer: %v", err)
 	}
-	err = plugin.Register(syncer)
-	if err != nil {
-		klog.Fatalf("Error registering certificate syncer: %v", err)
-	}
+	plugin.MustRegister(syncer)
 
 	// register issuer syncer
 	issuers_syncer, err := issuers.New(registerCtx)
-	err = plugin.Register(issuers_syncer)
-	if err != nil {
-		klog.Fatalf("Error registering certificate syncer: %v", err)
-	}
+	plugin.MustRegister(issuers_syncer)
 
 	// register secrets syncer
 	secrets_syncer, err := secrets.New(registerCtx)
 	if err != nil {
 		klog.Fatalf("Error creating secrets syncer: %v", err)
 	}
-	err = plugin.Register(secrets_syncer)
-	if err != nil {
-		klog.Fatalf("Error registering secrets syncer: %v", err)
-	}
+	plugin.MustRegister(secrets_syncer)
 
-	// start plugin
-	err = plugin.Start()
-	if err != nil {
-		klog.Fatalf("Error starting plugin: %v", err)
-	}
+	plugin.MustStart()
 }
